@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>เขาวงกต</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #ffffff;
+    font-family: -apple-system, "Segoe UI", Tahoma, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+  }
+  h1 {
+    font-size: 18px;
+    font-weight: 600;
+    color: #222;
+    margin: 16px 0 8px 0;
+  }
+  #mazeCanvas {
+    background: #ffffff;
+    max-width: 94vw;
+    height: auto;
+    touch-action: none;
+  }
+  button {
+    margin: 18px 0 24px 0;
+    padding: 14px 26px;
+    font-size: 16px;
+    font-weight: 600;
+    color: #ffffff;
+    background: #222222;
+    border: none;
+    border-radius: 6px;
+  }
+  button:active {
+    background: #444444;
+  }
+</style>
+</head>
+<body>
+
+<h1>เขาวงกต</h1>
+<canvas id="mazeCanvas"></canvas>
+<button id="newMazeBtn">สร้างเขาวงกตใหม่</button>
+
+<script>
+// ---------- ตั้งค่า ----------
+const COLS = 16;
+const ROWS = 22;
+const CELL = 22;
+const MARGIN = 6;
+const WALL_WIDTH = 4;
+const DOT_RADIUS = 6;
+const ANIM_STEPS = 6;
+const ANIM_DELAY = 25;
+const PAUSE_AT_END = 900;
+
+const canvas = document.getElementById('mazeCanvas');
+const ctx = canvas.getContext('2d');
+const dpr = window.devicePixelRatio || 1;
+
+const canvasW = COLS * CELL + MARGIN * 2;
+const canvasH = ROWS * CELL + MARGIN * 2;
+canvas.width = canvasW * dpr;
+canvas.height = canvasH * dpr;
+canvas.style.width = canvasW + 'px';
+canvas.style.height = canvasH + 'px';
+ctx.scale(dpr, dpr);
+
+let animTimer = null;
+
+function makeCell() {
+  return { N: true, S: true, E: true, W: true };
+}
+
+function generateMaze(cols, rows) {
+  const grid = [];
+  for (let r = 0; r < rows; r++) {
+    const row = [];
+    for (let c = 0; c < cols; c++) row.push(makeCell());
+    grid.push(row);
+  }
+  const visited = Array.from({ length: rows }, () => Array(cols).fill(false));
+  const opposite = { N: 'S', S: 'N', E: 'W', W: 'E' };
+
+  let r = 0, c = 0;
+  visited[r][c] = true;
+  const stack = [[r, c]];
+
+  while (stack.length) {
+    [r, c] = stack[stack.length - 1];
+    const neighbors = [];
+    if (r > 0 && !visited[r - 1][c]) neighbors.push(['N', r - 1, c]);
+    if (r < rows - 1 && !visited[r + 1][c]) neighbors.push(['S', r + 1, c]);
+    if (c > 0 && !visited[r][c - 1]) neighbors.push(['W', r, c - 1]);
+    if (c < cols - 1 && !visited[r][c + 1]) neighbors.push(['E', r, c + 1]);
+
+    if (neighbors.length) {
+      const [dir, nr, nc] = neighbors[Math.floor(Math.random() * neighbors.length)];
+      grid[r][c][dir] = false;
+      grid[nr][nc][opposite[dir]] = false;
+      visited[nr][nc] = true;
+      stack.push([nr, nc]);
+    } else {
+      stack.pop();
+    }
+  }
+  return grid;
+}
+
+function randInt(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function shuffle(array) {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+  return array;
+}
+
+function addSideOpenings(grid, cols, rows) {
+  // สุ่มตำแหน่งช่องทางบนขอบซ้าย/ขวาหลายจุด (เพื่อความสวยงาม)
+  // แต่จะเปิดเชื่อมเข้าเขาวงกตจริงเพียงด้านละ 1 จุดเท่านั้น (ทางเข้า/ทางออกจริง)
+  // ส่วนจุดที่เหลือจะแสดงเป็นช่องว่างเปิดเหมือนทางเข้าเช่นกัน แต่ไม่ได้เชื่อมต่อกับ
+  // โครงสร้างเขาวงกตด้านในจริง (ผนังด้านในยังคงปิดอยู่) จึงเดินทะลุไปยังอีกฝั่งไม่ได้
+  const rowIndexes = Array.from({ length: rows }, (_, i) => i);
+
+  const westRows = shuffle(rowIndexes.slice()).slice(0, randInt(2, 4));
+  const eastRows = shuffle(rowIndexes.slice()).slice(0, randInt(2, 4));
+
+  const realWestRow = westRows[0];
+  const realEastRow = eastRows[0];
+  const fakeWestRows = westRows.slice(1);
+  const fakeEastRows = eastRows.slice(1);
+
+  grid[realWestRow][0].W = false;
+  grid[realEastRow][cols - 1].E = false;
+
+  return { realWestRow, realEastRow, fakeWestRows, fakeEastRows };
+}
+
+function bfsPath(grid, start, end, cols, rows) {
+  const visited = Array.from({ length: rows }, () => Array(cols).fill(false));
+  const prev = {};
+  const key = (r, c) => r + ',' + c;
+
+  visited[start[0]][start[1]] = true;
+  const queue = [start];
+
+  while (queue.length) {
+    const [r, c] = queue.shift();
+    if (r === end[0] && c === end[1]) break;
+    const cell = grid[r][c];
+
+    if (!cell.N && r > 0 && !visited[r - 1][c]) {
+      visited[r - 1][c] = true; prev[key(r - 1, c)] = [r, c]; queue.push([r - 1, c]);
+    }
+    if (!cell.S && r < rows - 1 && !visited[r + 1][c]) {
+      visited[r + 1][c] = true; prev[key(r + 1, c)] = [r, c]; queue.push([r + 1, c]);
+    }
+    if (!cell.W && c > 0 && !visited[r][c - 1]) {
+      visited[r][c - 1] = true; prev[key(r, c - 1)] = [r, c]; queue.push([r, c - 1]);
+    }
+    if (!cell.E && c < cols - 1 && !visited[r][c + 1]) {
+      visited[r][c + 1] = true; prev[key(r, c + 1)] = [r, c]; queue.push([r, c + 1]);
+    }
+  }
+
+  if (!(start[0] === end[0] && start[1] === end[1]) && !(key(end[0], end[1]) in prev)) {
+    return null;
+  }
+  const path = [end];
+  while (!(path[path.length - 1][0] === start[0] && path[path.length - 1][1] === start[1])) {
+    path.push(prev[key(path[path.length - 1][0], path[path.length - 1][1])]);
+  }
+  path.reverse();
+  return path;
+}
+
+function drawMaze(grid, fakeWestRows, fakeEastRows) {
+  const fakeWestSet = new Set(fakeWestRows || []);
+  const fakeEastSet = new Set(fakeEastRows || []);
+
+  ctx.clearRect(0, 0, canvasW, canvasH);
+  ctx.strokeStyle = 'black';
+  ctx.lineWidth = WALL_WIDTH;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const x0 = MARGIN + c * CELL;
+      const y0 = MARGIN + r * CELL;
+      const x1 = x0 + CELL;
+      const y1 = y0 + CELL;
+      const cell = grid[r][c];
+
+      ctx.beginPath();
+      if (cell.N) { ctx.moveTo(x0, y0); ctx.lineTo(x1, y0); }
+      if (cell.S) { ctx.moveTo(x0, y1); ctx.lineTo(x1, y1); }
+      if (cell.W && !(c === 0 && fakeWestSet.has(r))) { ctx.moveTo(x0, y0); ctx.lineTo(x0, y1); }
+      if (cell.E && !(c === COLS - 1 && fakeEastSet.has(r))) { ctx.moveTo(x1, y0); ctx.lineTo(x1, y1); }
+      ctx.stroke();
+    }
+  }
+}
+
+function cellCenter(r, c) {
+  return [MARGIN + c * CELL + CELL / 2, MARGIN + r * CELL + CELL / 2];
+}
+
+function drawDot(x, y) {
+  ctx.beginPath();
+  ctx.fillStyle = 'red';
+  ctx.arc(x, y, DOT_RADIUS, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function animatePath(grid, fakeWestRows, fakeEastRows, points, segIndex, step) {
+  drawMaze(grid, fakeWestRows, fakeEastRows);
+
+  if (segIndex >= points.length - 1) {
+    const [x, y] = points[points.length - 1];
+    drawDot(x, y);
+    animTimer = setTimeout(() => animatePath(grid, fakeWestRows, fakeEastRows, points, 0, 0), PAUSE_AT_END);
+    return;
+  }
+
+  const [x0, y0] = points[segIndex];
+  const [x1, y1] = points[segIndex + 1];
+  const t = step / ANIM_STEPS;
+  const x = x0 + (x1 - x0) * t;
+  const y = y0 + (y1 - y0) * t;
+  drawDot(x, y);
+
+  if (step >= ANIM_STEPS) {
+    animTimer = setTimeout(() => animatePath(grid, fakeWestRows, fakeEastRows, points, segIndex + 1, 0), ANIM_DELAY);
+  } else {
+    animTimer = setTimeout(() => animatePath(grid, fakeWestRows, fakeEastRows, points, segIndex, step + 1), ANIM_DELAY);
+  }
+}
+
+function newMaze() {
+  if (animTimer !== null) {
+    clearTimeout(animTimer);
+    animTimer = null;
+  }
+
+  const grid = generateMaze(COLS, ROWS);
+  const { realWestRow, realEastRow, fakeWestRows, fakeEastRows } = addSideOpenings(grid, COLS, ROWS);
+  drawMaze(grid, fakeWestRows, fakeEastRows);
+
+  const start = [realWestRow, 0];
+  const end = [realEastRow, COLS - 1];
+  const path = bfsPath(grid, start, end, COLS, ROWS);
+  if (path) {
+    const points = path.map(([r, c]) => cellCenter(r, c));
+    animatePath(grid, fakeWestRows, fakeEastRows, points, 0, 0);
+  }
+}
+
+document.getElementById('newMazeBtn').addEventListener('click', newMaze);
+newMaze();
+</script>
+
+</body>
+</html>
