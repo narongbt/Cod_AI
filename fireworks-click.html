@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<title>พลุไฟ</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: #05060f;
+    height: 100%;
+    cursor: crosshair;
+  }
+  canvas {
+    display: block;
+  }
+  #hint {
+    position: fixed;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: #ffd8a8;
+    font-family: sans-serif;
+    font-size: 14px;
+    opacity: 0.8;
+    pointer-events: none;
+    text-shadow: 0 0 6px rgba(0,0,0,0.8);
+  }
+</style>
+</head>
+<body>
+<div id="hint">คลิกที่ใดก็ได้บนจอ เพื่อยิงพลุขึ้นจากจุดนั้น</div>
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+const rockets = [];   // ลูกพลุที่กำลังพุ่งขึ้น
+const particles = []; // เศษประกายไฟตอนแตก
+
+const COLORS = [
+  '#ff5e5e', '#ffb84d', '#ffe14d', '#7dff7d',
+  '#4dd2ff', '#7d7dff', '#e17dff', '#ff7dc4', '#ffffff'
+];
+
+function randColor() {
+  return COLORS[Math.floor(Math.random() * COLORS.length)];
+}
+
+// ข้อ 2: คลิกแล้วยิงพลุขึ้นจากตำแหน่งที่คลิก
+canvas.addEventListener('click', (e) => {
+  launchRocket(e.clientX, e.clientY);
+});
+
+function launchRocket(x, y) {
+  // เป้าหมายคือจุดใกล้ด้านบนของจอ (สุ่มเล็กน้อย) จากตำแหน่งที่คลิกขึ้นไป
+  const targetY = Math.max(40, y * 0.15 + Math.random() * 40);
+  rockets.push({
+    x: x,
+    y: y,
+    targetY: targetY,
+    vx: (Math.random() - 0.5) * 0.6,
+    vy: -(6 + Math.random() * 2.5),
+    color: randColor(),
+    trail: []
+  });
+}
+
+function explode(x, y, baseColor) {
+  const count = 60 + Math.floor(Math.random() * 40);
+  for (let i = 0; i < count; i++) {
+    const angle = (Math.PI * 2 * i) / count + Math.random() * 0.2;
+    const speed = 1.5 + Math.random() * 4.5;
+    particles.push({
+      x: x,
+      y: y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      color: Math.random() < 0.35 ? randColor() : baseColor,
+      life: 1,
+      decay: 0.008 + Math.random() * 0.015,
+      size: 1.5 + Math.random() * 2
+    });
+  }
+}
+
+function update() {
+  // อัปเดตลูกพลุที่กำลังพุ่งขึ้น
+  for (let i = rockets.length - 1; i >= 0; i--) {
+    const r = rockets[i];
+    r.trail.push({ x: r.x, y: r.y });
+    if (r.trail.length > 8) r.trail.shift();
+
+    r.x += r.vx;
+    r.y += r.vy;
+    r.vy += 0.03; // แรงต้านเล็กน้อยทำให้ช้าลงเมื่อใกล้จุดสูงสุด
+
+    // ข้อ 3: เมื่อลอยขึ้นไปเกือบสุด (ใกล้ targetY หรือความเร็วเริ่มติดลบน้อยลง) ให้แตก
+    if (r.y <= r.targetY || r.vy >= -0.5) {
+      explode(r.x, r.y, r.color);
+      rockets.splice(i, 1);
+    }
+  }
+
+  // อัปเดตเศษประกายไฟ
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.05; // แรงโน้มถ่วง
+    p.vx *= 0.98;
+    p.vy *= 0.98;
+    p.life -= p.decay;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function draw() {
+  // เอฟเฟกต์เงาจางเพื่อให้เกิดแนวหางไฟ
+  ctx.fillStyle = 'rgba(5, 6, 15, 0.25)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // วาดลูกพลุและหาง
+  for (const r of rockets) {
+    ctx.beginPath();
+    for (let i = 0; i < r.trail.length; i++) {
+      const t = r.trail[i];
+      ctx.globalAlpha = i / r.trail.length;
+      ctx.fillStyle = r.color;
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    ctx.beginPath();
+    ctx.arc(r.x, r.y, 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+  }
+
+  // วาดเศษประกายไฟ
+  for (const p of particles) {
+    ctx.globalAlpha = Math.max(p.life, 0);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    ctx.fillStyle = p.color;
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// เคลียร์จอเริ่มต้นให้เป็นสีพื้นหลังทึบก่อนเริ่มเอฟเฟกต์เงาจาง
+ctx.fillStyle = '#05060f';
+ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+loop();
+
+// ยิงพลุตัวอย่างให้ดูตอนเริ่มโปรแกรม
+setTimeout(() => launchRocket(canvas.width / 2, canvas.height - 20), 400);
+</script>
+</body>
+</html>
