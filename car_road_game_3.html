@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>เกมรถวิ่งบนถนนโค้ง</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; overflow: hidden;
+    background: #111; touch-action: none;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+  }
+  #gameCanvas { display: block; background: #2a2a2a; }
+  #hud {
+    position: fixed; top: 12px; left: 0; right: 0;
+    display: flex; justify-content: space-between; padding: 0 16px;
+    color: #fff; font-size: 18px; font-weight: bold;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.6);
+    pointer-events: none;
+  }
+  #overlay {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.75); color: #fff; text-align: center;
+    padding: 20px; box-sizing: border-box; z-index: 10;
+  }
+  #overlay h1 { font-size: 28px; margin-bottom: 8px; }
+  #overlay p { font-size: 16px; opacity: 0.85; margin: 6px 0 20px; }
+  #startBtn {
+    background: #ff5252; color: #fff; border: none; border-radius: 30px;
+    padding: 14px 36px; font-size: 18px; font-weight: bold;
+    box-shadow: 0 4px 12px rgba(255,82,82,0.5);
+  }
+  .hidden { display: none !important; }
+
+  #speedControl {
+    position: fixed; top: 50%; right: 14px; transform: translateY(-50%);
+    z-index: 20;
+    display: flex; flex-direction: column; align-items: center;
+    color: #fff;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.6);
+    pointer-events: none;
+  }
+  #speedControl.active { pointer-events: auto; }
+  #speedControl .box {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 8px; padding: 14px 10px;
+  }
+  #speedControl .emoji { font-size: 18px; }
+  #speedControl label {
+    font-size: 14px; font-weight: bold; text-align: center;
+  }
+  .slider-wrap {
+    width: 44px; height: 200px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #speedSlider {
+    width: 200px; height: 6px;
+    -webkit-appearance: none; appearance: none;
+    border-radius: 3px; background: rgba(255,255,255,0.3); outline: none;
+    transform: rotate(-90deg);
+  }
+  #speedSlider::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 24px; height: 24px; border-radius: 50%;
+    background: #ff5252; border: 3px solid #fff; cursor: pointer;
+  }
+  #speedSlider::-moz-range-thumb {
+    width: 24px; height: 24px; border-radius: 50%;
+    background: #ff5252; border: 3px solid #fff; cursor: pointer;
+  }
+  #speedValue {
+    min-width: 26px; text-align: center; font-size: 16px; font-weight: bold;
+  }
+  .box {
+    background: rgba(0,0,0,0.55); border-radius: 16px;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="gameCanvas"></canvas>
+
+<div id="hud">
+  <div id="scoreLabel">ระยะทาง: 0 ม.</div>
+  <div id="speedLabel">ความเร็ว: 0</div>
+</div>
+
+<div id="overlay">
+  <h1 id="overlayTitle">🚗 รถวิ่งบนถนนโค้ง</h1>
+  <p id="overlayText">ลากนิ้ว หรือแตะซ้าย/ขวาของจอ เพื่อบังคับรถให้อยู่บนถนน<br>ห้ามให้รถหลุดออกนอกถนน!</p>
+  <button id="startBtn">เริ่มเกม</button>
+</div>
+
+<div id="speedControl" class="active">
+  <div class="box">
+    <span class="emoji">🚀</span>
+    <div class="slider-wrap">
+      <input type="range" id="speedSlider" min="1" max="10" step="1" value="5">
+    </div>
+    <span class="emoji">🐢</span>
+    <label>ความเร็ว<br><span id="speedValue">5</span>/10</label>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const scoreLabel = document.getElementById('scoreLabel');
+const speedLabel = document.getElementById('speedLabel');
+const overlay = document.getElementById('overlay');
+const overlayTitle = document.getElementById('overlayTitle');
+const overlayText = document.getElementById('overlayText');
+const startBtn = document.getElementById('startBtn');
+
+let W, H;
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ---------- ค่าคงที่ของถนน ----------
+const STRIP_H = 6;          // ความสูงของแต่ละแถบถนน (px)
+const ROAD_WIDTH = 0.42;    // ความกว้างถนนเทียบกับความกว้างจอ
+let road = [];              // เก็บค่า offset จุดกึ่งกลางถนนของแต่ละแถบ (ล่างสุด -> บนสุด)
+let curveTarget = 0;        // ทิศทางโค้งที่กำลังมุ่งไป
+let curveTimer = 0;         // นับเวลาก่อนสุ่มทิศทางใหม่
+let curveValue = 0;         // ค่าความโค้งปัจจุบัน (สมูท)
+
+// ---------- สถานะรถ ----------
+let carX = 0;                // ตำแหน่ง x ของรถ (0 = กึ่งกลางจอ)
+let carTargetX = 0;
+let speed = 6;
+let baseSpeed = 6;
+let maxSpeed = 16;
+let distance = 0;
+let running = false;
+let gameOver = false;
+
+// ---------- ระดับความเร็วที่ผู้เล่นเลือก (1 = ช้ามาก, 10 = เร็วที่สุด) ----------
+const speedSlider = document.getElementById('speedSlider');
+const speedValueLabel = document.getElementById('speedValue');
+let speedLevel = parseInt(speedSlider.value, 10);
+
+function applySpeedLevel(level) {
+  speedLevel = level;
+  // แปลงระดับ 1-10 เป็นความเร็วเริ่มต้นและความเร็วสูงสุดของเกม
+  const minBase = 2,  maxBaseLevel = 14; // ความเร็วเริ่มต้น: ช้ามาก -> เร็วมาก
+  const minMax  = 5,  maxMaxLevel  = 30; // เพดานความเร็วสูงสุดที่จะไต่ไปถึง
+  const t = (level - 1) / 9;
+  baseSpeed = minBase + t * (maxBaseLevel - minBase);
+  maxSpeed  = minMax  + t * (maxMaxLevel  - minMax);
+  speedValueLabel.textContent = level;
+}
+
+speedSlider.addEventListener('input', () => applySpeedLevel(parseInt(speedSlider.value, 10)));
+applySpeedLevel(speedLevel);
+
+function initRoad() {
+  road = [];
+  const stripsNeeded = Math.ceil(H / STRIP_H) + 4;
+  for (let i = 0; i < stripsNeeded; i++) {
+    road.push(0);
+  }
+  curveValue = 0;
+  curveTarget = 0;
+  curveTimer = 0;
+}
+
+function resetGame() {
+  initRoad();
+  carX = 0;
+  carTargetX = 0;
+  speed = baseSpeed;
+  distance = 0;
+  gameOver = false;
+}
+
+// เพิ่มแถบถนนใหม่ที่ด้านบน (บนสุดของอาเรย์ = จุดที่ไกลที่สุด ยังไม่ปรากฏ)
+function addRoadStrip() {
+  // สุ่มเปลี่ยนทิศทางโค้งเป็นช่วง ๆ ให้ดูเป็นธรรมชาติ
+  curveTimer -= 1;
+  if (curveTimer <= 0) {
+    curveTarget = (Math.random() * 2 - 1) * 2.2; // สุ่มความชันของโค้ง ซ้าย(-) ขวา(+)
+    curveTimer = 40 + Math.random() * 60;
+  }
+  // ค่อย ๆ ปรับ curveValue เข้าหา curveTarget เพื่อให้โค้งลื่นไม่กระตุก
+  curveValue += (curveTarget - curveValue) * 0.04;
+
+  const last = road[road.length - 1];
+  let next = last + curveValue;
+
+  // จำกัดไม่ให้ถนนโค้งจนหลุดขอบจอมากเกินไป
+  const maxOffset = W * 0.5 - (W * ROAD_WIDTH) / 2 - 20;
+  if (next > maxOffset) { next = maxOffset; curveTarget = -Math.abs(curveTarget); }
+  if (next < -maxOffset) { next = -maxOffset; curveTarget = Math.abs(curveTarget); }
+
+  road.push(next);
+  road.shift();
+}
+
+let scrollOffset = 0;
+
+function update() {
+  if (!running || gameOver) return;
+
+  // ความเร็วเพิ่มขึ้นเรื่อย ๆ ตามระยะทาง
+  speed = Math.min(maxSpeed, baseSpeed + distance / 400);
+  distance += speed / 10;
+  scrollOffset += speed;
+
+  while (scrollOffset >= STRIP_H) {
+    scrollOffset -= STRIP_H;
+    addRoadStrip();
+  }
+
+  // รถขยับเข้าหาตำแหน่งเป้าหมายแบบนุ่มนวล
+  carX += (carTargetX - carX) * 0.18;
+
+  // ตรวจสอบว่ารถอยู่ในถนนหรือไม่ (เทียบกับกึ่งกลางถนนที่ตำแหน่งของรถ)
+  const carRowIndex = road.length - Math.round(H * 0.82 / STRIP_H) - 1;
+  const roadCenterAtCar = road[Math.max(0, Math.min(road.length - 1, carRowIndex))] || 0;
+  const halfRoad = (W * ROAD_WIDTH) / 2;
+  const carHalfWidth = 22;
+
+  if (carX - carHalfWidth < roadCenterAtCar - halfRoad ||
+      carX + carHalfWidth > roadCenterAtCar + halfRoad) {
+    endGame();
+  }
+
+  scoreLabel.textContent = 'ระยะทาง: ' + Math.floor(distance) + ' ม.';
+  speedLabel.textContent = 'ความเร็ว: ' + Math.floor(speed * 10);
+}
+
+function drawRoad() {
+  ctx.fillStyle = '#3a5f3a';
+  ctx.fillRect(0, 0, W, H);
+
+  const halfRoad = (W * ROAD_WIDTH) / 2;
+
+  for (let i = 0; i < road.length - 1; i++) {
+    const y = H - (i * STRIP_H) + scrollOffset - STRIP_H;
+    if (y < -STRIP_H || y > H + STRIP_H) continue;
+
+    const cx = W / 2 + road[i];
+    const left = cx - halfRoad;
+    const right = cx + halfRoad;
+
+    // ผิวถนน
+    ctx.fillStyle = '#4a4a4a';
+    ctx.fillRect(left, y, right - left, STRIP_H + 1);
+
+    // เส้นขอบถนน
+    ctx.fillStyle = '#e0e0e0';
+    ctx.fillRect(left - 4, y, 4, STRIP_H + 1);
+    ctx.fillRect(right, y, 4, STRIP_H + 1);
+
+    // เส้นกึ่งกลางถนนแบบประ
+    if (Math.floor(i / 3) % 2 === 0) {
+      ctx.fillStyle = '#f5d33c';
+      ctx.fillRect(cx - 3, y, 6, STRIP_H + 1);
+    }
+  }
+}
+
+function drawCar() {
+  const cy = H * 0.82;
+  ctx.save();
+  ctx.translate(W / 2 + carX, cy);
+
+  // เงา
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.beginPath();
+  ctx.ellipse(0, 30, 24, 8, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // ตัวรถ
+  ctx.fillStyle = '#ff4b4b';
+  roundRect(ctx, -20, -35, 40, 65, 10);
+  ctx.fill();
+
+  // กระจก
+  ctx.fillStyle = '#a8d8ff';
+  roundRect(ctx, -14, -25, 28, 20, 6);
+  ctx.fill();
+
+  // ไฟหน้า
+  ctx.fillStyle = '#fff59d';
+  ctx.fillRect(-16, -34, 8, 6);
+  ctx.fillRect(8, -34, 8, 6);
+
+  ctx.restore();
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function draw() {
+  drawRoad();
+  drawCar();
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+function endGame() {
+  gameOver = true;
+  running = false;
+  overlayTitle.textContent = '💥 รถหลุดถนน!';
+  overlayText.innerHTML = 'ระยะทางที่วิ่งได้: ' + Math.floor(distance) + ' เมตร<br>ลองอีกครั้งไหม?';
+  startBtn.textContent = 'เล่นอีกครั้ง';
+  overlay.classList.remove('hidden');
+}
+
+function startGame() {
+  resetGame();
+  overlay.classList.add('hidden');
+  running = true;
+}
+
+startBtn.addEventListener('click', startGame);
+
+// ---------- ควบคุมด้วยการแตะ/ลาก ----------
+let dragging = false;
+let dragStartX = 0;
+let carStartX = 0;
+
+function pointerDown(x) {
+  dragging = true;
+  dragStartX = x;
+  carStartX = carTargetX;
+}
+function pointerMove(x) {
+  if (!dragging) return;
+  const dx = x - dragStartX;
+  carTargetX = carStartX + dx;
+  const halfRoad = (W * ROAD_WIDTH) / 2 - 10;
+  carTargetX = Math.max(-halfRoad - 30, Math.min(halfRoad + 30, carTargetX));
+}
+function pointerUp() {
+  dragging = false;
+}
+
+canvas.addEventListener('touchstart', e => pointerDown(e.touches[0].clientX), {passive:true});
+canvas.addEventListener('touchmove', e => pointerMove(e.touches[0].clientX), {passive:true});
+canvas.addEventListener('touchend', pointerUp);
+
+canvas.addEventListener('mousedown', e => pointerDown(e.clientX));
+canvas.addEventListener('mousemove', e => pointerMove(e.clientX));
+window.addEventListener('mouseup', pointerUp);
+
+initRoad();
+draw();
+loop();
+</script>
+</body>
+</html>
