@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>กล้อง + ตรวจจับนิ้วชี้</title>
+<style>
+  :root{
+    --ink:#0d1210;
+    --panel:#151b19;
+    --panel2:#1c2421;
+    --line:#2a3430;
+    --mint:#3ddc97;
+    --mint-dim:#245c43;
+    --amber:#e8b34a;
+    --text:#eef2ef;
+    --text-dim:#8fa39a;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{
+    margin:0;padding:0;height:100%;
+    background:var(--ink);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans Thai",sans-serif;
+    overscroll-behavior:none;
+  }
+  .app{
+    max-width:520px;
+    margin:0 auto;
+    min-height:100dvh;
+    display:flex;
+    flex-direction:column;
+    padding:14px 14px calc(20px + env(safe-area-inset-bottom));
+    gap:12px;
+  }
+  header{
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+    padding:4px 2px 2px;
+  }
+  header h1{
+    font-size:17px;
+    font-weight:700;
+    letter-spacing:0.2px;
+    margin:0;
+  }
+  header .dot{
+    width:8px;height:8px;border-radius:50%;
+    background:var(--text-dim);
+    display:inline-block;margin-right:7px;
+    transition:background .2s;
+  }
+  header .dot.live{background:var(--mint);box-shadow:0 0 8px var(--mint);}
+  .status-row{
+    display:flex;align-items:center;
+    font-size:12.5px;color:var(--text-dim);
+  }
+
+  .stage{
+    position:relative;
+    width:100%;
+    aspect-ratio:3/4;
+    background:#000;
+    border-radius:18px;
+    overflow:hidden;
+    border:1px solid var(--line);
+  }
+  video{
+    width:100%;height:100%;
+    object-fit:cover;
+    display:block;
+    background:#000;
+  }
+  canvas.overlay{
+    position:absolute;inset:0;
+    width:100%;height:100%;
+    pointer-events:none;
+  }
+  .placeholder{
+    position:absolute;inset:0;
+    display:flex;flex-direction:column;
+    align-items:center;justify-content:center;
+    gap:10px;
+    color:var(--text-dim);
+    text-align:center;
+    padding:30px;
+  }
+  .placeholder svg{opacity:.5;}
+  .placeholder p{font-size:13px;margin:0;line-height:1.5;}
+
+  .badge{
+    position:absolute;
+    top:12px;left:12px;
+    background:rgba(13,18,16,0.65);
+    backdrop-filter:blur(6px);
+    border:1px solid var(--line);
+    color:var(--text-dim);
+    font-size:11.5px;
+    padding:6px 10px;
+    border-radius:999px;
+  }
+  .badge.detecting{color:var(--mint);border-color:var(--mint-dim);}
+
+  .controls{
+    display:flex;
+    gap:10px;
+  }
+  button{
+    font-family:inherit;
+    border:none;
+    border-radius:14px;
+    padding:13px 14px;
+    font-size:14.5px;
+    font-weight:600;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:7px;
+    transition:transform .08s, opacity .15s, background .15s;
+  }
+  button:active{transform:scale(0.96);}
+  button:disabled{opacity:.4;cursor:default;}
+  .btn-primary{
+    flex:1;
+    background:var(--mint);
+    color:#06110c;
+  }
+  .btn-secondary{
+    background:var(--panel2);
+    color:var(--text);
+    border:1px solid var(--line);
+  }
+  .btn-icon{
+    width:48px;flex:none;
+    background:var(--panel2);
+    color:var(--text);
+    border:1px solid var(--line);
+  }
+
+  .gallery{
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+  }
+  .gallery h2{
+    font-size:12.5px;
+    text-transform:uppercase;
+    letter-spacing:0.08em;
+    color:var(--text-dim);
+    margin:6px 2px 0;
+    font-weight:600;
+  }
+  .shots{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:8px;
+  }
+  .shot{
+    position:relative;
+    border-radius:10px;
+    overflow:hidden;
+    border:1px solid var(--line);
+    aspect-ratio:3/4;
+    background:var(--panel);
+  }
+  .shot img{width:100%;height:100%;object-fit:cover;display:block;}
+  .shot .tick{
+    position:absolute;bottom:5px;right:5px;
+    width:20px;height:20px;
+    background:var(--mint);
+    border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .shot .tick svg{width:12px;height:12px;}
+  .empty-note{
+    font-size:12.5px;color:var(--text-dim);
+    padding:10px 2px;
+  }
+
+  .hint{
+    font-size:12px;
+    color:var(--text-dim);
+    line-height:1.6;
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:11px 13px;
+  }
+  .hint b{color:var(--text);}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header>
+    <h1>ตรวจจับนิ้วชี้ 👆</h1>
+  </header>
+
+  <div class="status-row">
+    <span class="dot" id="liveDot"></span>
+    <span id="statusText">ยังไม่เปิดกล้อง</span>
+  </div>
+
+  <div class="stage" id="stage">
+    <video id="video" playsinline muted autoplay></video>
+    <canvas class="overlay" id="overlay"></canvas>
+    <div class="badge" id="detectBadge">ไม่พบมือ</div>
+    <div class="placeholder" id="placeholder">
+      <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+        <circle cx="12" cy="13" r="4"/>
+      </svg>
+      <p>กดปุ่ม "เปิดกล้อง" แล้วยกมือขึ้น ชูนิ้วชี้ 1 นิ้ว<br>ให้ระบบตรวจจับเครื่องหมายถูก</p>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="btn-icon" id="switchBtn" title="สลับกล้อง" disabled>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/>
+        <path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+      </svg>
+    </button>
+    <button class="btn-primary" id="startBtn">เปิดกล้อง</button>
+    <button class="btn-secondary" id="captureBtn" disabled>📸 ถ่ายภาพ</button>
+  </div>
+
+  <div class="hint">
+    <b>วิธีใช้งาน:</b> ถือมือถือแบบเซลฟี่ ให้มือของคุณอยู่ค่อนไปทางครึ่งล่างของเฟรม พื้นหลังเรียบและแสงสว่างพอ จะช่วยให้ตรวจจับได้แม่นยำขึ้น ระบบนี้ใช้การวิเคราะห์สีผิวแบบพื้นฐาน (ไม่ใช่ AI โมเดลเต็มรูปแบบ) จึงเหมาะกับการสาธิตมากกว่าใช้งานจริงจัง
+  </div>
+
+  <div class="gallery">
+    <h2>ภาพที่ถ่าย</h2>
+    <div class="shots" id="shots"></div>
+    <div class="empty-note" id="emptyNote">ยังไม่มีภาพที่ถ่าย — กดปุ่ม "ถ่ายภาพ" เพื่อบันทึก</div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  const video = document.getElementById('video');
+  const overlay = document.getElementById('overlay');
+  const octx = overlay.getContext('2d');
+  const stage = document.getElementById('stage');
+  const placeholder = document.getElementById('placeholder');
+  const startBtn = document.getElementById('startBtn');
+  const switchBtn = document.getElementById('switchBtn');
+  const captureBtn = document.getElementById('captureBtn');
+  const statusText = document.getElementById('statusText');
+  const liveDot = document.getElementById('liveDot');
+  const detectBadge = document.getElementById('detectBadge');
+  const shotsEl = document.getElementById('shots');
+  const emptyNote = document.getElementById('emptyNote');
+
+  let stream = null;
+  let facingMode = 'user';
+  let running = false;
+  let mirrored = true;
+
+  // offscreen small canvas for fast pixel analysis
+  const proc = document.createElement('canvas');
+  const pctx = proc.getContext('2d', { willReadFrequently: true });
+  const PW = 96, PH = 128;
+  proc.width = PW; proc.height = PH;
+
+  let oneFingerStreak = 0;
+  let isOneFinger = false;
+  let lastBBox = null;
+
+  function setStatus(txt){ statusText.textContent = txt; }
+
+  async function startCamera(){
+    try{
+      setStatus('กำลังขอสิทธิ์เข้าถึงกล้อง...');
+      if(stream){ stream.getTracks().forEach(t=>t.stop()); }
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: facingMode, width:{ideal:720}, height:{ideal:960} },
+        audio:false
+      });
+      video.srcObject = stream;
+      mirrored = (facingMode === 'user');
+      video.style.transform = mirrored ? 'scaleX(-1)' : 'none';
+      await video.play();
+      placeholder.style.display = 'none';
+      liveDot.classList.add('live');
+      setStatus('กล้องพร้อมใช้งาน — ยกมือชูนิ้วชี้ให้เห็นในเฟรม');
+      switchBtn.disabled = false;
+      captureBtn.disabled = false;
+      startBtn.textContent = 'รีสตาร์ทกล้อง';
+      running = true;
+      resizeOverlay();
+      requestAnimationFrame(loop);
+    }catch(err){
+      console.error(err);
+      setStatus('เปิดกล้องไม่สำเร็จ: ' + (err.message || err.name));
+    }
+  }
+
+  function resizeOverlay(){
+    const r = stage.getBoundingClientRect();
+    overlay.width = r.width;
+    overlay.height = r.height;
+  }
+  window.addEventListener('resize', resizeOverlay);
+
+  switchBtn.addEventListener('click', ()=>{
+    facingMode = (facingMode === 'user') ? 'environment' : 'user';
+    startCamera();
+  });
+
+  startBtn.addEventListener('click', startCamera);
+
+  // ---- skin detection helpers ----
+  function isSkin(r,g,b){
+    const y  = 0.299*r + 0.587*g + 0.114*b;
+    const cb = 128 - 0.168736*r - 0.331264*g + 0.5*b;
+    const cr = 128 + 0.5*r - 0.418688*g - 0.081312*b;
+    return y > 55 && cb >= 75 && cb <= 130 && cr >= 132 && cr <= 175;
+  }
+
+  function analyzeFrame(){
+    if(video.videoWidth === 0) return null;
+    pctx.save();
+    if(mirrored){
+      pctx.translate(PW,0);
+      pctx.scale(-1,1);
+    }
+    pctx.drawImage(video, 0, 0, PW, PH);
+    pctx.restore();
+
+    let data;
+    try{
+      data = pctx.getImageData(0,0,PW,PH).data;
+    }catch(e){ return null; }
+
+    // build skin mask, restrict search to lower 82% of frame to reduce face interference
+    const mask = new Uint8Array(PW*PH);
+    const rowStart = Math.floor(PH*0.10);
+    let minX=PW, maxX=0, minY=PH, maxY=0, count=0;
+
+    for(let y=rowStart; y<PH; y++){
+      for(let x=0; x<PW; x++){
+        const idx = (y*PW+x)*4;
+        const r=data[idx], g=data[idx+1], b=data[idx+2];
+        if(isSkin(r,g,b)){
+          mask[y*PW+x] = 1;
+          count++;
+          if(x<minX)minX=x; if(x>maxX)maxX=x;
+          if(y<minY)minY=y; if(y>maxY)maxY=y;
+        }
+      }
+    }
+
+    const minPixels = 90; // noise floor
+    if(count < minPixels){
+      return { found:false };
+    }
+
+    const bw = maxX-minX+1, bh = maxY-minY+1;
+    if(bw < 10 || bh < 14){
+      return { found:false };
+    }
+
+    // find topmost row (within bbox) that actually has skin, scan a bit below it for finger tips
+    let topRow = minY;
+    for(let y=minY; y<=maxY; y++){
+      let has=false;
+      for(let x=minX;x<=maxX;x++){ if(mask[y*PW+x]){has=true;break;} }
+      if(has){ topRow = y; break; }
+    }
+
+    const scanY = Math.min(maxY, topRow + Math.max(3, Math.round(bh*0.08)));
+
+    // count contiguous skin runs at scanY -> approximate finger count
+    let runs = 0, inRun = false, minRunLen = 2, runLen = 0;
+    for(let x=minX; x<=maxX; x++){
+      const on = mask[scanY*PW+x] === 1;
+      if(on){
+        runLen++;
+        if(!inRun){ inRun = true; }
+      }else{
+        if(inRun && runLen >= minRunLen) runs++;
+        inRun = false; runLen = 0;
+      }
+    }
+    if(inRun && runLen >= minRunLen) runs++;
+
+    return {
+      found:true,
+      bbox:{x:minX,y:minY,w:bw,h:bh},
+      scanY, runs
+    };
+  }
+
+  function drawOverlay(res){
+    octx.clearRect(0,0,overlay.width,overlay.height);
+    if(!res || !res.found){
+      lastBBox = null;
+      return;
+    }
+    const sx = overlay.width / PW;
+    const sy = overlay.height / PH;
+    const bx = res.bbox.x*sx, by = res.bbox.y*sy, bw = res.bbox.w*sx, bh = res.bbox.h*sy;
+    lastBBox = {bx,by,bw,bh};
+
+    octx.strokeStyle = isOneFinger ? '#3ddc97' : 'rgba(232,179,74,0.85)';
+    octx.lineWidth = 2;
+    octx.setLineDash([6,5]);
+    octx.strokeRect(bx,by,bw,bh);
+    octx.setLineDash([]);
+
+    if(isOneFinger){
+      drawCheckmark(bx + bw/2, Math.max(40, by - 10));
+    }
+  }
+
+  function drawCheckmark(cx, cy){
+    const r = Math.max(30, Math.min(overlay.width, overlay.height) * 0.11);
+    octx.save();
+    octx.translate(cx, cy);
+    octx.beginPath();
+    octx.arc(0,0,r,0,Math.PI*2);
+    octx.fillStyle = 'rgba(61,220,151,0.16)';
+    octx.fill();
+    octx.strokeStyle = '#3ddc97';
+    octx.lineWidth = 3;
+    octx.stroke();
+
+    octx.beginPath();
+    octx.moveTo(-r*0.45, 0);
+    octx.lineTo(-r*0.12, r*0.38);
+    octx.lineTo(r*0.5, -r*0.35);
+    octx.strokeStyle = '#3ddc97';
+    octx.lineWidth = r*0.16;
+    octx.lineCap = 'round';
+    octx.lineJoin = 'round';
+    octx.stroke();
+    octx.restore();
+  }
+
+  function loop(){
+    if(!running) return;
+    const res = analyzeFrame();
+
+    if(res && res.found && res.runs === 1){
+      oneFingerStreak++;
+    } else {
+      oneFingerStreak = 0;
+    }
+    isOneFinger = oneFingerStreak >= 3;
+
+    if(res && res.found){
+      detectBadge.textContent = isOneFinger ? '✓ ตรวจพบ 1 นิ้ว' : `พบมือ (${res.runs} ส่วน)`;
+      detectBadge.classList.toggle('detecting', isOneFinger);
+    }else{
+      detectBadge.textContent = 'ไม่พบมือ';
+      detectBadge.classList.remove('detecting');
+    }
+
+    drawOverlay(res);
+    requestAnimationFrame(loop);
+  }
+
+  // ---- capture photo ----
+  captureBtn.addEventListener('click', ()=>{
+    const vw = video.videoWidth, vh = video.videoHeight;
+    if(!vw) return;
+    const c = document.createElement('canvas');
+    c.width = vw; c.height = vh;
+    const cctx = c.getContext('2d');
+    if(mirrored){
+      cctx.translate(vw,0);
+      cctx.scale(-1,1);
+    }
+    cctx.drawImage(video,0,0,vw,vh);
+
+    // stamp checkmark onto the still if it was detected at capture time
+    if(isOneFinger && lastBBox){
+      const sxr = vw/overlay.width, syr = vh/overlay.height;
+      const cx = mirrored ? (vw - (lastBBox.bx+lastBBox.bw/2)*sxr) : (lastBBox.bx+lastBBox.bw/2)*sxr;
+      const cy = Math.max(50, (lastBBox.by-10)*syr);
+      stampCheck(cctx, cx, cy, Math.min(vw,vh)*0.12);
+    }
+
+    const dataUrl = c.toDataURL('image/jpeg', 0.9);
+    addShot(dataUrl, isOneFinger);
+  });
+
+  function stampCheck(ctx, cx, cy, r){
+    ctx.save();
+    ctx.translate(cx,cy);
+    ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2);
+    ctx.fillStyle='rgba(61,220,151,0.18)'; ctx.fill();
+    ctx.strokeStyle='#3ddc97'; ctx.lineWidth=r*0.1; ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-r*0.45,0); ctx.lineTo(-r*0.12,r*0.38); ctx.lineTo(r*0.5,-r*0.35);
+    ctx.strokeStyle='#3ddc97'; ctx.lineWidth=r*0.16; ctx.lineCap='round'; ctx.lineJoin='round';
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function addShot(dataUrl, detected){
+    emptyNote.style.display = 'none';
+    const div = document.createElement('div');
+    div.className = 'shot';
+    div.innerHTML = `<img src="${dataUrl}" alt="ภาพที่ถ่าย">` +
+      (detected ? `<div class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="#06110c" stroke-width="3"><path d="M4 12l5 5L20 6"/></svg></div>` : '');
+    shotsEl.prepend(div);
+  }
+
+})();
+</script>
+</body>
+</html>
