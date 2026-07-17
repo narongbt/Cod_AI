@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<title>หิมะตก</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+    background: linear-gradient(to bottom, #0b1026, #1b2a4a 60%, #24304f);
+  }
+  canvas {
+    display: block;
+  }
+  .info {
+    position: fixed;
+    top: 12px;
+    left: 16px;
+    color: rgba(255,255,255,0.6);
+    font-family: sans-serif;
+    font-size: 13px;
+    z-index: 10;
+  }
+</style>
+</head>
+<body>
+<div class="info">❄️ หิมะตกแบบสุ่ม</div>
+<canvas id="snowCanvas"></canvas>
+<script>
+const canvas = document.getElementById('snowCanvas');
+const ctx = canvas.getContext('2d');
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// เก็บหิมะที่กำลังตก และหิมะที่ละลายอยู่บนพื้น
+let flakes = [];
+let melting = [];
+
+function randomColor() {
+  // สีเย็น ๆ แบบสุ่ม (ขาว, ฟ้าอ่อน, ม่วงอ่อน, ชมพูอ่อน ฯลฯ)
+  const hue = Math.floor(Math.random() * 360);
+  const light = 80 + Math.random() * 20; // สว่างมาก ให้ดูเหมือนหิมะ
+  const sat = Math.random() * 60;
+  return `hsl(${hue}, ${sat}%, ${light}%)`;
+}
+
+function spawnFlake() {
+  const size = 2 + Math.random() * 5;
+  return {
+    x: Math.random() * canvas.width,
+    y: -10,
+    size: size,
+    speedY: 0.5 + Math.random() * 2.5,
+    speedX: (Math.random() - 0.5) * 1.5,
+    color: randomColor(),
+    opacity: 0.6 + Math.random() * 0.4,
+    sway: Math.random() * Math.PI * 2,
+    swaySpeed: 0.01 + Math.random() * 0.02
+  };
+}
+
+// สุ่มจำนวนหิมะที่ตกลงมาในแต่ละช่วงเวลา
+function spawnBatch() {
+  const count = 1 + Math.floor(Math.random() * 8); // จำนวนสุ่ม 1-8 ก้อนต่อครั้ง
+  for (let i = 0; i < count; i++) {
+    flakes.push(spawnFlake());
+  }
+}
+
+// เรียก spawnBatch แบบสุ่มช่วงเวลา
+function scheduleSpawn() {
+  spawnBatch();
+  const nextDelay = 80 + Math.random() * 220; // สุ่มช่วงเวลาถัดไป
+  setTimeout(scheduleSpawn, nextDelay);
+}
+scheduleSpawn();
+
+function drawFlake(f) {
+  ctx.beginPath();
+  ctx.arc(f.x, f.y, f.size, 0, Math.PI * 2);
+  ctx.fillStyle = f.color;
+  ctx.globalAlpha = f.opacity;
+  ctx.shadowBlur = f.size * 2;
+  ctx.shadowColor = f.color;
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.shadowBlur = 0;
+}
+
+function drawMelting(m) {
+  // หิมะละลาย: แผ่กว้างขึ้นและจางลง
+  const progress = m.age / m.lifetime;
+  const radius = m.size * (1 + progress * 2);
+  ctx.beginPath();
+  ctx.ellipse(m.x, m.y, radius, radius * 0.35, 0, 0, Math.PI * 2);
+  ctx.fillStyle = m.color;
+  ctx.globalAlpha = (1 - progress) * 0.5;
+  ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+function groundY() {
+  return canvas.height - 4 - Math.random() * 2; // เส้นพื้นขยับเล็กน้อยให้ดูธรรมชาติ
+}
+
+function animate() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // อัปเดตและวาดหิมะที่กำลังตก
+  for (let i = flakes.length - 1; i >= 0; i--) {
+    const f = flakes[i];
+    f.sway += f.swaySpeed;
+    f.x += f.speedX + Math.sin(f.sway) * 0.5;
+    f.y += f.speedY;
+
+    if (f.y >= canvas.height - 6) {
+      // ถึงพื้น -> เริ่มละลาย
+      melting.push({
+        x: f.x,
+        y: canvas.height - 4,
+        size: f.size,
+        color: f.color,
+        age: 0,
+        lifetime: 40 + Math.random() * 40
+      });
+      flakes.splice(i, 1);
+      continue;
+    }
+    drawFlake(f);
+  }
+
+  // อัปเดตและวาดหิมะที่กำลังละลาย
+  for (let i = melting.length - 1; i >= 0; i--) {
+    const m = melting[i];
+    m.age++;
+    if (m.age >= m.lifetime) {
+      melting.splice(i, 1);
+      continue;
+    }
+    drawMelting(m);
+  }
+
+  requestAnimationFrame(animate);
+}
+animate();
+</script>
+</body>
+</html>
