@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<title>เส้นคู่ล่องลอย</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: #0a0e14;
+    height: 100%;
+    width: 100%;
+  }
+  canvas {
+    display: block;
+    cursor: default;
+  }
+  #hint {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    color: #4a5568;
+    user-select: none;
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hint">JOINTED LINE · WANDERING</div>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// The joint (elbow) position — the structure wanders around the screen
+const joint = {
+  x: window.innerWidth / 2,
+  y: window.innerHeight / 2,
+  vx: (Math.random() - 0.5) * 1.2,
+  vy: (Math.random() - 0.5) * 1.2
+};
+
+// Segment lengths now drift randomly over time between these bounds
+const LEN_MIN = 60;
+const LEN_MAX = 220;
+
+// Each segment has its own angle/angular velocity AND length/length velocity that drift randomly
+const seg1 = { angle: Math.random() * Math.PI * 2, av: 0, len: 140, lv: 0 };
+const seg2 = { angle: Math.random() * Math.PI * 2, av: 0, len: 140, lv: 0 };
+
+// Trail of past joint/end positions for a soft fading tail
+const trail = [];
+const MAX_TRAIL = 40;
+
+function wrap(pos, size) {
+  const margin = 20;
+  if (pos < -margin) return size + margin;
+  if (pos > size + margin) return -margin;
+  return pos;
+}
+
+function step() {
+  // random-walk the velocity of the joint (gentle drift)
+  joint.vx += (Math.random() - 0.5) * 0.15;
+  joint.vy += (Math.random() - 0.5) * 0.15;
+
+  // clamp speed so it doesn't run away
+  const maxSpeed = 1.8;
+  const speed = Math.hypot(joint.vx, joint.vy);
+  if (speed > maxSpeed) {
+    joint.vx = (joint.vx / speed) * maxSpeed;
+    joint.vy = (joint.vy / speed) * maxSpeed;
+  }
+
+  joint.x += joint.vx;
+  joint.y += joint.vy;
+
+  // wrap around screen edges
+  joint.x = wrap(joint.x, canvas.width);
+  joint.y = wrap(joint.y, canvas.height);
+
+  // random-walk the angles of each segment independently
+  seg1.av += (Math.random() - 0.5) * 0.02;
+  seg2.av += (Math.random() - 0.5) * 0.02;
+  seg1.av = Math.max(-0.05, Math.min(0.05, seg1.av));
+  seg2.av = Math.max(-0.05, Math.min(0.05, seg2.av));
+  seg1.angle += seg1.av;
+  seg2.angle += seg2.av;
+
+  // random-walk the length of each segment independently
+  seg1.lv += (Math.random() - 0.5) * 0.6;
+  seg2.lv += (Math.random() - 0.5) * 0.6;
+  seg1.lv = Math.max(-2, Math.min(2, seg1.lv));
+  seg2.lv = Math.max(-2, Math.min(2, seg2.lv));
+  seg1.len += seg1.lv;
+  seg2.len += seg2.lv;
+
+  // bounce length off the min/max bounds so it stays in range
+  if (seg1.len < LEN_MIN) { seg1.len = LEN_MIN; seg1.lv *= -1; }
+  if (seg1.len > LEN_MAX) { seg1.len = LEN_MAX; seg1.lv *= -1; }
+  if (seg2.len < LEN_MIN) { seg2.len = LEN_MIN; seg2.lv *= -1; }
+  if (seg2.len > LEN_MAX) { seg2.len = LEN_MAX; seg2.lv *= -1; }
+}
+
+function getPoints() {
+  const A = {
+    x: joint.x + Math.cos(seg1.angle) * seg1.len,
+    y: joint.y + Math.sin(seg1.angle) * seg1.len
+  };
+  const B = { x: joint.x, y: joint.y };
+  const C = {
+    x: joint.x + Math.cos(seg2.angle) * seg2.len,
+    y: joint.y + Math.sin(seg2.angle) * seg2.len
+  };
+  return { A, B, C };
+}
+
+function draw() {
+  ctx.fillStyle = 'rgba(10, 14, 20, 0.18)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const { A, B, C } = getPoints();
+
+  trail.push({ A, B, C });
+  if (trail.length > MAX_TRAIL) trail.shift();
+
+  // fading trail
+  trail.forEach((p, i) => {
+    const t = i / trail.length;
+    ctx.strokeStyle = `rgba(90, 200, 210, ${t * 0.12})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(p.A.x, p.A.y);
+    ctx.lineTo(p.B.x, p.B.y);
+    ctx.lineTo(p.C.x, p.C.y);
+    ctx.stroke();
+  });
+
+  // glow
+  ctx.save();
+  ctx.shadowColor = 'rgba(120, 230, 240, 0.9)';
+  ctx.shadowBlur = 18;
+
+  const grad = ctx.createLinearGradient(A.x, A.y, C.x, C.y);
+  grad.addColorStop(0, '#ff8a65');
+  grad.addColorStop(0.5, '#78e6f0');
+  grad.addColorStop(1, '#ff8a65');
+
+  ctx.strokeStyle = grad;
+  ctx.lineWidth = 3.5;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(A.x, A.y);
+  ctx.lineTo(B.x, B.y);
+  ctx.lineTo(C.x, C.y);
+  ctx.stroke();
+  ctx.restore();
+
+  // joint node
+  ctx.beginPath();
+  ctx.arc(B.x, B.y, 6, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffffff';
+  ctx.shadowColor = 'rgba(255,255,255,0.9)';
+  ctx.shadowBlur = 10;
+  ctx.fill();
+
+  // end nodes
+  [A, C].forEach(p => {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#78e6f0';
+    ctx.shadowBlur = 8;
+    ctx.fill();
+  });
+  ctx.shadowBlur = 0;
+}
+
+function loop() {
+  step();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+</body>
+</html>
