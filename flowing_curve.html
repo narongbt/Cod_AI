@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<title>Flowing Curve Animation</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    height: 100%;
+    background: #05050a;
+  }
+  canvas {
+    display: block;
+    cursor: crosshair;
+  }
+  #hint {
+    position: fixed;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(255,255,255,0.55);
+    font-family: sans-serif;
+    font-size: 14px;
+    pointer-events: none;
+    user-select: none;
+  }
+  #controls {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(20, 20, 35, 0.65);
+    backdrop-filter: blur(6px);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 12px;
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-family: sans-serif;
+    color: rgba(255,255,255,0.85);
+    font-size: 14px;
+    user-select: none;
+  }
+  #speedSlider {
+    width: 180px;
+  }
+</style>
+</head>
+<body>
+<div id="hint">คลิก / แตะ ที่หน้าจอ เพื่อสั่งให้เส้นโค้งไหลไปยังตำแหน่งนั้น</div>
+<canvas id="canvas"></canvas>
+<div id="controls">
+  <label for="speedSlider">ความเร็ว</label>
+  <input type="range" id="speedSlider" min="0.5" max="10" step="0.1" value="3">
+  <span id="speedValue">3.0</span>
+  <label for="lengthSlider" style="margin-left:10px;">จำนวนจุด</label>
+  <input type="range" id="lengthSlider" min="10" max="55" step="1" value="35">
+  <span id="lengthValue">35</span>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ---------- ค่าคงที่ของเส้นโค้ง ----------
+let NUM_POINTS = 35;          // จำนวนจุดที่ประกอบกันเป็นเส้นโค้ง (ปรับได้ 10-55 ผ่าน slider)
+const SEGMENT_LEN = 9;        // ระยะห่างคงที่ระหว่างจุด -> ความยาวเส้นรวมคงที่เสมอ (ตามจำนวนจุดปัจจุบัน)
+
+// จุดทั้งหมดของเส้นโค้ง (index 0 = หัว, index สุดท้าย = ปลายหาง)
+let head = { x: canvas.width / 2, y: canvas.height / 2 };
+let points = [];
+for (let i = 0; i < NUM_POINTS; i++) {
+  points.push({ x: head.x, y: head.y });
+}
+
+let target = randomTarget();
+let noiseSeed = Math.random() * 1000;
+let speed = 3.0;
+
+function randomTarget() {
+  return {
+    x: 60 + Math.random() * (canvas.width - 120),
+    y: 60 + Math.random() * (canvas.height - 120)
+  };
+}
+
+// ---------- สีสุ่ม (นีออน) ----------
+const palette = [
+  [255, 60, 180],
+  [60, 200, 255],
+  [180, 60, 255],
+  [60, 255, 140],
+  [255, 200, 40],
+  [255, 90, 60],
+  [80, 120, 255],
+];
+let colorIndex = Math.floor(Math.random() * palette.length);
+let currentColor = palette[colorIndex];
+let nextColor = palette[(colorIndex + 1) % palette.length];
+let colorBlend = 0;
+const colorBlendSpeed = 0.01;
+let colorTimer = 0;
+const colorChangeInterval = 90; // เฟรม ก่อนเริ่มไล่สีใหม่
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+function getMixedColor() {
+  return [
+    Math.round(lerp(currentColor[0], nextColor[0], colorBlend)),
+    Math.round(lerp(currentColor[1], nextColor[1], colorBlend)),
+    Math.round(lerp(currentColor[2], nextColor[2], colorBlend)),
+  ];
+}
+
+// ---------- ควบคุมความเร็วด้วย slider ----------
+const speedSlider = document.getElementById('speedSlider');
+const speedValue = document.getElementById('speedValue');
+speedSlider.addEventListener('input', () => {
+  speed = parseFloat(speedSlider.value);
+  speedValue.textContent = speed.toFixed(1);
+});
+
+const lengthSlider = document.getElementById('lengthSlider');
+const lengthValue = document.getElementById('lengthValue');
+lengthSlider.addEventListener('input', () => {
+  NUM_POINTS = parseInt(lengthSlider.value);
+  lengthValue.textContent = NUM_POINTS;
+  rebuildPoints();
+});
+
+function rebuildPoints() {
+  // สร้างจุดของเส้นโค้งใหม่ตามจำนวนที่กำหนด โดยเริ่มจากตำแหน่งหัวปัจจุบัน
+  // แล้วปล่อยให้ระบบโซ่ (chain) ไล่ตามหัวจนเข้าที่เองในเฟรมถัดๆ ไป
+  points = [];
+  for (let i = 0; i < NUM_POINTS; i++) {
+    points.push({ x: head.x, y: head.y });
+  }
+}
+
+// ---------- คลิก / แตะ เพื่อกำหนดเป้าหมายใหม่ ----------
+function setTargetFromEvent(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  target = { x: clientX - rect.left, y: clientY - rect.top };
+}
+canvas.addEventListener('mousedown', (e) => setTargetFromEvent(e.clientX, e.clientY));
+canvas.addEventListener('touchstart', (e) => {
+  const t = e.touches[0];
+  setTargetFromEvent(t.clientX, t.clientY);
+});
+
+// ---------- อัปเดตตำแหน่งหัวเส้น ----------
+function updateHead() {
+  const dx = target.x - head.x;
+  const dy = target.y - head.y;
+  const dist = Math.hypot(dx, dy);
+
+  if (dist < 8) {
+    target = randomTarget();
+  } else {
+    // ทิศทางหลักเข้าสู่เป้าหมาย
+    const dirX = dx / dist;
+    const dirY = dy / dist;
+
+    // เพิ่มการบิดโค้งแบบธรรมชาติด้วยคลื่นไซน์ตั้งฉากกับทิศทางการเคลื่อนที่
+    noiseSeed += 0.04;
+    const wiggle = Math.sin(noiseSeed) * 1.6;
+    const perpX = -dirY;
+    const perpY = dirX;
+
+    head.x += dirX * speed + perpX * wiggle;
+    head.y += dirY * speed + perpY * wiggle;
+  }
+
+  // จำกัดขอบเขตไม่ให้หลุดจอ
+  head.x = Math.max(0, Math.min(canvas.width, head.x));
+  head.y = Math.max(0, Math.min(canvas.height, head.y));
+}
+
+// ---------- คำนวณจุดของเส้นโค้งแบบโซ่ (chain) ความยาวคงที่ ----------
+function updateChain() {
+  points[0].x = head.x;
+  points[0].y = head.y;
+
+  for (let i = 1; i < NUM_POINTS; i++) {
+    const prev = points[i - 1];
+    const cur = points[i];
+    const dx = cur.x - prev.x;
+    const dy = cur.y - prev.y;
+    const dist = Math.hypot(dx, dy) || 0.0001;
+    const ratio = SEGMENT_LEN / dist;
+    cur.x = prev.x + dx * ratio;
+    cur.y = prev.y + dy * ratio;
+  }
+}
+
+// ---------- วาดเส้นโค้ง ----------
+function drawCurve() {
+  const [r, g, b] = getMixedColor();
+
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  // วาดทีละช่วง โดยลด alpha ลงเรื่อยๆ จากหัว (ทึบ) ไปยังปลายหาง (จางหาย)
+  for (let i = 0; i < NUM_POINTS - 1; i++) {
+    const t = i / (NUM_POINTS - 2);      // 0 ที่หัว -> 1 ที่ปลายหาง
+    const alpha = 1 - t;                  // ค่อยๆ จางหายไปทางปลาย
+    const width = lerp(7, 1, t);
+
+    ctx.beginPath();
+    ctx.moveTo(points[i].x, points[i].y);
+    ctx.lineTo(points[i + 1].x, points[i + 1].y);
+    ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    ctx.lineWidth = width;
+    ctx.shadowColor = `rgba(${r}, ${g}, ${b}, ${alpha * 0.8})`;
+    ctx.shadowBlur = 12;
+    ctx.stroke();
+  }
+  ctx.shadowBlur = 0;
+
+  // จุดเรืองแสงที่หัวเส้น
+  ctx.beginPath();
+  ctx.arc(points[0].x, points[0].y, 6, 0, Math.PI * 2);
+  ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 1)`;
+  ctx.shadowColor = `rgba(${r}, ${g}, ${b}, 0.9)`;
+  ctx.shadowBlur = 18;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+}
+
+// ---------- อัปเดตสีแบบสุ่มไปเรื่อยๆ ----------
+function updateColor() {
+  colorBlend += colorBlendSpeed;
+  if (colorBlend >= 1) {
+    colorBlend = 0;
+    currentColor = nextColor;
+    colorTimer++;
+    let newIndex;
+    do {
+      newIndex = Math.floor(Math.random() * palette.length);
+    } while (palette[newIndex] === currentColor);
+    nextColor = palette[newIndex];
+  }
+}
+
+// ---------- ลูปหลัก ----------
+function loop() {
+  updateHead();
+  updateChain();
+  updateColor();
+
+  ctx.fillStyle = 'rgba(5, 5, 10, 0.35)'; // เว้นร่องรอยจางๆ ให้ภาพดูนุ่มนวลขึ้นเล็กน้อย
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  drawCurve();
+
+  requestAnimationFrame(loop);
+}
+
+// เคลียร์พื้นหลังตั้งต้นให้ทึบก่อนเริ่ม
+ctx.fillStyle = '#05050a';
+ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+loop();
+</script>
+</body>
+</html>
