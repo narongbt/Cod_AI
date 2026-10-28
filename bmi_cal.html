@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>คำนวณ BMI</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#eef3f1;--surface:#fff;--text:#1d2b27;--muted:#5d6f69;--line:#cdd9d4;--accent:#1f6f5c;--accent-text:#fff;
+--under:#3b82c4;--normal:#2f9e6e;--over:#e0a21b;--obese:#d9622b;--obese2:#b8332f}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#121a18;--surface:#1b2623;--text:#e6efec;--muted:#98aba5;--line:#2f403b;--accent:#4fc3a1;--accent-text:#0d1f1a}}
+:root[data-theme="dark"]{--bg:#121a18;--surface:#1b2623;--text:#e6efec;--muted:#98aba5;--line:#2f403b;--accent:#4fc3a1;--accent-text:#0d1f1a}
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--text);font-family:'Noto Sans Thai',system-ui,sans-serif;line-height:1.6}
+main{max-width:480px;margin:0 auto;padding:24px 16px 40px}
+h1{font-size:1.5rem;margin:0 0 4px}
+p.sub{margin:0 0 20px;color:var(--muted)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:20px}
+label{display:block;font-weight:600;margin:0 0 6px}
+.field{margin-bottom:16px}
+input[type=number]{width:100%;font:inherit;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--text)}
+input:focus-visible,button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.seg input{position:absolute;opacity:0}
+.seg span{display:block;text-align:center;padding:12px;border:1px solid var(--line);border-radius:10px;cursor:pointer;background:var(--bg)}
+.seg input:checked+span{background:var(--accent);color:var(--accent-text);border-color:var(--accent);font-weight:600}
+.seg input:focus-visible+span{outline:3px solid var(--accent);outline-offset:2px}
+.seg label{position:relative;margin:0;font-weight:400}
+button.go{width:100%;font:inherit;font-weight:700;padding:14px;border:0;border-radius:10px;background:var(--accent);color:var(--accent-text);cursor:pointer}
+.err{color:var(--obese2);margin:0 0 12px;min-height:1.4em;font-size:.95rem}
+#result{margin-top:16px;display:none}
+.big{font-size:3rem;font-weight:700;line-height:1.1;margin:0}
+.cat{font-weight:700;font-size:1.15rem;margin:4px 0 12px}
+.bar{position:relative;height:14px;border-radius:7px;display:flex;overflow:hidden;margin:18px 0 6px}
+.bar i{display:block;height:100%}
+.pin{position:absolute;top:-4px;width:4px;height:22px;background:var(--text);border-radius:2px;transform:translateX(-2px);transition:left .4s}
+.scale{display:flex;justify-content:space-between;font-size:.75rem;color:var(--muted)}
+.note{color:var(--muted);font-size:.9rem;margin:12px 0 0}
+.meta{margin:12px 0 0;padding:12px;border-radius:10px;background:var(--bg);font-size:.95rem}
+@media (prefers-reduced-motion:reduce){.pin{transition:none}}
+</style>
+</head>
+<body>
+<main>
+<h1>คำนวณดัชนีมวลกาย (BMI)</h1>
+<p class="sub">กรอกข้อมูลของคุณ แล้วกดคำนวณ</p>
+<div class="card">
+  <div class="field">
+    <label id="gl">เพศ</label>
+    <div class="seg" role="radiogroup" aria-labelledby="gl">
+      <label><input type="radio" name="g" value="ชาย"><span>ชาย</span></label>
+      <label><input type="radio" name="g" value="หญิง"><span>หญิง</span></label>
+    </div>
+  </div>
+  <div class="field">
+    <label for="age">อายุ (ปี)</label>
+    <input id="age" type="number" inputmode="numeric" min="2" max="120" placeholder="เช่น 30">
+  </div>
+  <div class="row">
+    <div class="field">
+      <label for="h">ส่วนสูง (ซม.)</label>
+      <input id="h" type="number" inputmode="decimal" min="50" max="250" placeholder="เช่น 165">
+    </div>
+    <div class="field">
+      <label for="w">น้ำหนัก (กก.)</label>
+      <input id="w" type="number" inputmode="decimal" min="10" max="400" placeholder="เช่น 60">
+    </div>
+  </div>
+  <p class="err" id="err" role="alert"></p>
+  <button class="go" id="go" type="button">คำนวณ BMI</button>
+
+  <div id="result" aria-live="polite">
+    <p class="big" id="val"></p>
+    <p class="cat" id="cat"></p>
+    <div class="bar" id="bar"></div>
+    <div class="scale"><span>15</span><span>18.5</span><span>23</span><span>25</span><span>30</span><span>40</span></div>
+    <p class="meta" id="meta"></p>
+    <p class="note">เกณฑ์ตามแนวทางสำหรับคนเอเชีย (WHO Asia-Pacific) ใช้กับผู้ใหญ่อายุ 18 ปีขึ้นไป BMI เป็นเพียงค่าประเมินเบื้องต้น ไม่ใช่การวินิจฉัย หากกังวลเรื่องสุขภาพควรปรึกษาแพทย์</p>
+  </div>
+</div>
+</main>
+<script>
+(function(){
+var $=function(i){return document.getElementById(i)};
+var zones=[
+ {max:18.5,name:"น้ำหนักน้อย / ผอม",color:"var(--under)",tip:"ควรเพิ่มน้ำหนักด้วยอาหารที่มีประโยชน์และออกกำลังกายสร้างกล้ามเนื้อ"},
+ {max:23,name:"น้ำหนักปกติ",color:"var(--normal)",tip:"สมส่วนดีแล้ว รักษาพฤติกรรมการกินและการออกกำลังกายไว้"},
+ {max:25,name:"น้ำหนักเกิน",color:"var(--over)",tip:"เริ่มควบคุมอาหารและเพิ่มการออกกำลังกายเพื่อป้องกันโรคเรื้อรัง"},
+ {max:30,name:"อ้วนระดับ 1",color:"var(--obese)",tip:"ควรปรับพฤติกรรมการกิน ออกกำลังกายสม่ำเสมอ และตรวจสุขภาพประจำปี"},
+ {max:Infinity,name:"อ้วนระดับ 2",color:"var(--obese2)",tip:"ความเสี่ยงต่อโรคสูง ควรปรึกษาแพทย์เพื่อวางแผนดูแลน้ำหนัก"}
+];
+var bar=$("bar");
+[[15,18.5,0],[18.5,23,1],[23,25,2],[25,30,3],[30,40,4]].forEach(function(z){
+ var s=document.createElement("i");s.style.width=((z[1]-z[0])/25*100)+"%";s.style.background=zones[z[2]].color;bar.appendChild(s);
+});
+var pin=document.createElement("div");pin.className="pin";pin.setAttribute("aria-hidden","true");bar.appendChild(pin);
+
+function calc(){
+ var g=document.querySelector('input[name=g]:checked');
+ var age=parseFloat($("age").value),h=parseFloat($("h").value),w=parseFloat($("w").value);
+ var err=$("err");err.textContent="";
+ if(!g){err.textContent="กรุณาเลือกเพศ";return}
+ if(!(age>=2&&age<=120)){err.textContent="กรุณากรอกอายุระหว่าง 2–120 ปี";return}
+ if(!(h>=50&&h<=250)){err.textContent="กรุณากรอกส่วนสูงระหว่าง 50–250 ซม.";return}
+ if(!(w>=10&&w<=400)){err.textContent="กรุณากรอกน้ำหนักระหว่าง 10–400 กก.";return}
+ var m=h/100,bmi=w/(m*m);
+ var z=zones.find(function(x){return bmi<x.max});
+ $("val").textContent=bmi.toFixed(1);
+ $("cat").textContent=z.name;$("cat").style.color=z.color;
+ var pos=Math.min(Math.max((bmi-15)/25,0),1)*100;
+ pin.style.left=pos+"%";
+ var lo=18.5*m*m,hi=22.9*m*m;
+ var txt="เพศ"+g.value+" อายุ "+age+" ปี · น้ำหนักที่เหมาะสมสำหรับส่วนสูง "+h+" ซม. คือประมาณ "+lo.toFixed(1)+"–"+hi.toFixed(1)+" กก.<br>"+z.tip;
+ if(age<18)txt+="<br><b>หมายเหตุ:</b> สำหรับเด็กและวัยรุ่น (ต่ำกว่า 18 ปี) ต้องเทียบกับกราฟการเจริญเติบโตตามอายุและเพศ ผลนี้ใช้อ้างอิงได้จำกัด";
+ $("meta").innerHTML=txt;
+ $("result").style.display="block";
+}
+$("go").addEventListener("click",calc);
+["age","h","w"].forEach(function(i){$(i).addEventListener("keydown",function(e){if(e.key==="Enter")calc()})});
+})();
+</script>
+</body>
+</html>
