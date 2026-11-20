@@ -41,6 +41,7 @@ small{color:var(--muted);display:block;margin-top:10px}
       <option value="THB">THB บาท</option>
       <option value="LAK">LAK กีบ</option>
       <option value="USD">USD ดอลลาร์</option>
+      <option value="CNY">CNY หยวน</option>
     </select>
   </div>
 </div>
@@ -52,43 +53,45 @@ small{color:var(--muted);display:block;margin-top:10px}
   <div class="rates">
     <div class="rate">1 บาท = <input id="rLAK" type="number" inputmode="decimal" step="any"> กีบ</div>
     <div class="rate">1 ดอลลาร์ = <input id="rUSD" type="number" inputmode="decimal" step="any"> บาท</div>
+    <div class="rate">1 หยวน = <input id="rCNY" type="number" inputmode="decimal" step="any"> บาท</div>
   </div>
-  <small>อัตราเริ่มต้นเป็นค่ากลางโดยประมาณ ณ วันที่ 24 ต.ค. 2569 (1 บาท ≈ 690 กีบ, 1 ดอลลาร์ ≈ 33.27 บาท) อัตราจริงของธนาคารหรือร้านแลกเงินจะต่างออกไป กรุณาแก้ตัวเลขให้ตรงกับอัตราที่ใช้จริง</small>
+  <small>อัตราเริ่มต้นเป็นค่ากลางโดยประมาณจากการค้นหาเมื่อ พ.ย. 2569 (1 บาท ≈ 690 กีบ, 1 ดอลลาร์ ≈ 33.27 บาท, 1 หยวน ≈ 4.9 บาท โดยค่าหยวนอ้างอิงข้อมูลช่วง ส.ค. 2569 จึงอาจคลาดเคลื่อนมากกว่า) อัตราจริงของธนาคารหรือร้านแลกเงินจะต่างออกไป กรุณาแก้ตัวเลขให้ตรงกับอัตราที่ใช้จริง</small>
 </div>
 </main>
 
 <script>
 (function(){
-  var DEF={lak:690,usd:33.27};
+  var DEF={lak:690,usd:33.27,cny:4.9};
   var $=function(id){return document.getElementById(id)};
-  var rLAK=$("rLAK"),rUSD=$("rUSD"),amt=$("amount"),from=$("from"),out=$("results");
+  var rLAK=$("rLAK"),rUSD=$("rUSD"),rCNY=$("rCNY"),amt=$("amount"),from=$("from"),out=$("results");
   try{
     var s=JSON.parse(localStorage.getItem("rates")||"null");
-    if(s&&s.lak>0&&s.usd>0){DEF=s}
+    if(s&&s.lak>0&&s.usd>0){DEF.lak=s.lak;DEF.usd=s.usd;if(s.cny>0)DEF.cny=s.cny}
   }catch(e){}
-  rLAK.value=DEF.lak;rUSD.value=DEF.usd;
+  rLAK.value=DEF.lak;rUSD.value=DEF.usd;rCNY.value=DEF.cny;
 
   var fmt={
     THB:function(n){return n.toLocaleString("th-TH",{maximumFractionDigits:2})},
     LAK:function(n){return n.toLocaleString("th-TH",{maximumFractionDigits:0})},
-    USD:function(n){return n.toLocaleString("en-US",{maximumFractionDigits:2})}
+    USD:function(n){return n.toLocaleString("en-US",{maximumFractionDigits:2})},
+    CNY:function(n){return n.toLocaleString("en-US",{maximumFractionDigits:2})}
   };
-  var names={THB:"บาท (THB)",LAK:"กีบ (LAK)",USD:"ดอลลาร์ (USD)"};
+  var names={THB:"บาท (THB)",LAK:"กีบ (LAK)",USD:"ดอลลาร์ (USD)",CNY:"หยวน (CNY)"};
 
   function calc(){
-    var lak=parseFloat(rLAK.value),usd=parseFloat(rUSD.value),a=parseFloat(amt.value);
-    if(!(lak>0)||!(usd>0)||!(a>=0)){out.innerHTML='<span style="color:var(--muted)">กรอกจำนวนเงินและอัตราแลกเปลี่ยนให้ถูกต้อง</span>';return}
-    var perTHB={THB:1,LAK:lak,USD:1/usd};
+    var lak=parseFloat(rLAK.value),usd=parseFloat(rUSD.value),cny=parseFloat(rCNY.value),a=parseFloat(amt.value);
+    if(!(lak>0)||!(usd>0)||!(cny>0)||!(a>=0)){out.innerHTML='<span style="color:var(--muted)">กรอกจำนวนเงินและอัตราแลกเปลี่ยนให้ถูกต้อง</span>';return}
+    var perTHB={THB:1,LAK:lak,USD:1/usd,CNY:1/cny};
     var thb=a/perTHB[from.value];
     var html="";
-    ["THB","LAK","USD"].forEach(function(c){
+    ["THB","LAK","USD","CNY"].forEach(function(c){
       if(c===from.value)return;
       html+='<div class="res"><span>'+names[c]+'</span><b>'+fmt[c](thb*perTHB[c])+'</b></div>';
     });
     out.innerHTML=html;
-    try{localStorage.setItem("rates",JSON.stringify({lak:lak,usd:usd}))}catch(e){}
+    try{localStorage.setItem("rates",JSON.stringify({lak:lak,usd:usd,cny:cny}))}catch(e){}
   }
-  [rLAK,rUSD,amt,from].forEach(function(el){el.addEventListener("input",calc);el.addEventListener("change",calc)});
+  [rLAK,rUSD,rCNY,amt,from].forEach(function(el){el.addEventListener("input",calc);el.addEventListener("change",calc)});
   calc();
 })();
 </script>
