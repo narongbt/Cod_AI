@@ -1,36 +1,321 @@
 <!DOCTYPE html>
-<html>
+<html lang="th">
 <head>
-<title>Tools & AI Program List</title>
-<link rel="icon" type="image/x-icon" href="app_icon.ico">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Code by AI</title>
+  <link href="app_icon.ico" rel="icon" type="image/x-icon">
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-color: #0f172a;
+      --card-bg: #1e293b;
+      --accent: #38bdf8;
+      --accent-glow: rgba(56, 189, 248, 0.25);
+      --text-main: #f8fafc;
+      --text-muted: #64748b;
+      --item-height: 56px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Prompt', sans-serif;
+    }
+
+    body {
+      background: radial-gradient(circle at top, #1e293b 0%, #0f172a 100%);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      overflow: hidden;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    h1 {
+      font-size: 2rem;
+      font-weight: 600;
+      background: linear-gradient(90deg, #38bdf8, #818cf8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      letter-spacing: 0.5px;
+    }
+
+    .category-badge {
+      display: inline-block;
+      margin-top: 8px;
+      padding: 4px 14px;
+      font-size: 0.8rem;
+      border-radius: 999px;
+      background: rgba(56, 189, 248, 0.12);
+      color: var(--accent);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      transition: all 0.2s ease;
+    }
+
+    /* กล่อง Picker หลัก */
+    .picker-wrapper {
+      position: relative;
+      width: 100%;
+      max-width: 440px;
+      height: calc(var(--item-height) * 5); /* แสดงทีละ 5 แถว */
+      background: rgba(30, 41, 59, 0.7);
+      backdrop-filter: blur(12px);
+      border-radius: 24px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+      overflow: hidden;
+    }
+
+    /* แถบไฮไลต์ตรงกลาง */
+    .picker-highlight {
+      position: absolute;
+      top: 50%;
+      left: 14px;
+      right: 14px;
+      height: var(--item-height);
+      transform: translateY(-50%);
+      background: var(--accent-glow);
+      border: 1px solid rgba(56, 189, 248, 0.5);
+      border-radius: 14px;
+      pointer-events: none;
+      z-index: 2;
+      box-shadow: 0 0 20px rgba(56, 189, 248, 0.15);
+    }
+
+    /* เงาไล่ระดับด้านบนและล่างให้ดูมีมิติโค้ง */
+    .picker-wrapper::before,
+    .picker-wrapper::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: calc(var(--item-height) * 1.8);
+      z-index: 3;
+      pointer-events: none;
+    }
+
+    .picker-wrapper::before {
+      top: 0;
+      background: linear-gradient(to bottom, rgba(15, 23, 42, 0.95), rgba(15, 23, 42, 0));
+    }
+
+    .picker-wrapper::after {
+      bottom: 0;
+      background: linear-gradient(to top, rgba(15, 23, 42, 0.95), rgba(15, 23, 42, 0));
+    }
+
+    /* พื้นที่เลื่อน Scroll Snap */
+    .picker-list {
+      height: 100%;
+      overflow-y: auto;
+      scroll-snap-type: y mandatory;
+      scroll-behavior: smooth;
+      /* ดันรายการแรกและสุดท้ายให้อยู่ตรงกลางได้พอดี */
+      padding-top: calc(var(--item-height) * 2);
+      padding-bottom: calc(var(--item-height) * 2);
+      list-style: none;
+      scrollbar-width: none; /* ซ่อน scrollbar Firefox */
+    }
+
+    .picker-list::-webkit-scrollbar {
+      display: none; /* ซ่อน scrollbar Chrome/Safari */
+    }
+
+    .picker-item {
+      height: var(--item-height);
+      scroll-snap-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 24px;
+      cursor: pointer;
+      transition: transform 0.2s ease, opacity 0.2s ease, color 0.2s ease;
+      opacity: 0.45;
+      transform: scale(0.88);
+      user-select: none;
+    }
+
+    .picker-item a {
+      text-decoration: none;
+      color: inherit;
+      font-size: 1.05rem;
+      font-weight: 400;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      pointer-events: none; /* ให้ JS จัดการการคลิก */
+    }
+
+    /* สถานะเมื่ออยู่ตรงกลาง */
+    .picker-item.active {
+      opacity: 1;
+      transform: scale(1.06);
+      color: #ffffff;
+    }
+
+    .picker-item.active a {
+      font-weight: 600;
+    }
+
+    /* ปุ่มกดเปิดด้านล่าง */
+    .controls {
+      margin-top: 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      max-width: 440px;
+    }
+
+    .open-btn {
+      width: 100%;
+      padding: 14px 24px;
+      border: none;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #0284c7, #38bdf8);
+      color: #0f172a;
+      font-size: 1.05rem;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 10px 25px -5px rgba(56, 189, 248, 0.4);
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .open-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 14px 30px -5px rgba(56, 189, 248, 0.55);
+    }
+
+    .open-btn:active {
+      transform: scale(0.98);
+    }
+
+    .hint {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      text-align: center;
+    }
+  </style>
 </head>
 <body>
 
-<h1>Code by AI</h1>
- 
-<ul>
-  <li><a href="https://gemini.google.com/app">Google Gemini</a></li>
-  <li><a href="https://colab.research.google.com/">Google Colab</a></li>
-  <li><a href="https://claude.ai/recents">Claude</a></li>
-  <li><a href="https://chatgpt.com/">Chatgpt</a></li>
-  <li><a href="https://github.com">GitHub</a></li>
-  <br>
-  <li><a href="maze_app.html">เขาวงกต!</a></li>
-  <li><a href="stars_blackhole.html">ดวงดาวและหลุมดำ</a></li>
-  <li><a href="earth-satellites.html">โลถหมุน ดาวเทียนหมุนรอบโลก</a></li>
-  <li><a href="snake-wander.html">งูเลื้อยหาเป้าหมาย</a></li>
-  <li><a href="connected-lines.html">เส้นตรง 2 เส้นเคลื่อนที่</a></li>
-  <li><a href="flowing_curve.html">การไหลของเส้นโค้ง</a></li>
-  <li><a href="fireworks-click.html">พลุดอกไม้ไฟ</a></li>
-  <li><a href="snow.html">หิมะตก</a></li>
-  <li><a href="car_road_game_3.html">ขับรถ_ถนน</a></li>
-  <li><a href="hand-gesture-camera.html"> X กล้องตรวจจับนิ้ว</a></li>
-  <li><a href="money_ex.html">แลกเปลี่ยนเงิน THB-> LAK,USD,CNY </a></li>
-  <li><a href="bmi_cal.html">คำนวณหาค่า BMI</a></li>
-  <li></li>
-  <li></li>
-  <li></li>
-</ul>
+  <header>
+    <h1>Code by AI</h1>
+    <div id="categoryBadge" class="category-badge">AI & Tools</div>
+  </header>
 
+  <div class="picker-wrapper">
+    <div class="picker-highlight"></div>
+    <ul class="picker-list" id="pickerList">
+      <!-- หมวด AI & Tools -->
+      <li class="picker-item" data-cat="AI & Tools"><a href="https://gemini.google.com/app">Google Gemini</a></li>
+      <li class="picker-item" data-cat="AI & Tools"><a href="https://colab.research.google.com/">Google Colab</a></li>
+      <li class="picker-item" data-cat="AI & Tools"><a href="https://claude.ai/recents">Claude</a></li>
+      <li class="picker-item" data-cat="AI & Tools"><a href="https://chatgpt.com/">ChatGPT</a></li>
+      <li class="picker-item" data-cat="AI & Tools"><a href="https://github.com">GitHub</a></li>
+
+      <!-- หมวด Web Apps & Games -->
+      <li class="picker-item" data-cat="Web Apps & Games"><a href="maze_app.html">เขาวงกต!</a></li>
+      <li class="picker-item" data-cat="Web Apps & Games"><a href="stars_blackhole.html">ดวงดาวและหลุมดำ</a></li>
+      <li class="picker-item" data-cat="Web Apps & Games"><a href="earth-satellites.html">โลกหมุน ดาวเทียมหมุนรอบโลก</a></li>
+      <li class="picker-item" data-cat="Web Apps & Games"><a href="snake-wander.html">งูเลื้อยหาเป้าหมาย</a></li>
+      <li class="picker-item" data-cat="Web Apps & Games"><a href="connected-lines.html">เส้นตรง 2 เส้นเคลื่อนที่</a></li>
+      <li class="picker-item" data-cat="Web Apps & Games"><a href="flowing_curve.html">การไหลของเส้นโค้ง</a></li>
+      <li class="picker-item" data-cat="Web Apps & Games"><a href="fireworks-click.html">พลุดอกไม้ไฟ</a></li>
+      <li class="picker-item" data-cat="Web Apps & Games"><a href="snow.html">หิมะตก</a></li>
+      <li class="picker-item" data-cat="Web Apps & Games"><a href="car_road_game_3.html">ขับรถ_ถนน</a></li>
+      <li class="picker-item" data-cat="Web Apps & Games"><a href="hand-gesture-camera.html">X กล้องตรวจจับนิ้ว</a></li>
+      <li class="picker-item" data-cat="Web Apps & Games"><a href="money_ex.html">แลกเปลี่ยนเงิน THB → LAK, USD, CNY</a></li>
+      <li class="picker-item" data-cat="Web Apps & Games"><a href="bmi_cal.html">คำนวณหาค่า BMI</a></li>
+    </ul>
+  </div>
+
+  <div class="controls">
+    <button class="open-btn" id="openBtn">เปิดเมนูที่เลือก</button>
+    <p class="hint">เลื่อนขึ้น-ลง หรือใช้ปุ่มลูกศร ↑ ↓ แล้วคลิกตรงกลางเพื่อเปิด</p>
+  </div>
+
+  <script>
+    const pickerList = document.getElementById('pickerList');
+    const items = Array.from(document.querySelectorAll('.picker-item'));
+    const categoryBadge = document.getElementById('categoryBadge');
+    const openBtn = document.getElementById('openBtn');
+    const itemHeight = 56;
+    let activeIndex = 0;
+
+    // อัปเดตรายการที่อยู่ตรงกลาง
+    function updateActiveItem() {
+      const index = Math.round(pickerList.scrollTop / itemHeight);
+      const clampedIndex = Math.max(0, Math.min(index, items.length - 1));
+
+      if (clampedIndex !== activeIndex || !items[clampedIndex].classList.contains('active')) {
+        items.forEach((item, i) => {
+          item.classList.toggle('active', i === clampedIndex);
+        });
+        activeIndex = clampedIndex;
+        categoryBadge.textContent = items[activeIndex].dataset.cat;
+      }
+    }
+
+    // เปิดลิงก์ของรายการที่เลือก
+    function openSelectedLink() {
+      const link = items[activeIndex].querySelector('a');
+      if (link) {
+        window.location.href = link.getAttribute('href');
+      }
+    }
+
+    // ตรวจจับการเลื่อน
+    pickerList.addEventListener('scroll', () => {
+      window.requestAnimationFrame(updateActiveItem);
+    });
+
+    // คลิกที่รายการ: ถ้าอยู่ตรงกลางให้เปิดลิงก์ ถ้าอยู่แถวอื่นให้เลื่อนมาตรงกลาง
+    items.forEach((item, index) => {
+      item.addEventListener('click', () => {
+        if (index === activeIndex) {
+          openSelectedLink();
+        } else {
+          pickerList.scrollTo({
+            top: index * itemHeight,
+            behavior: 'smooth'
+          });
+        }
+      });
+    });
+
+    // ปุ่มเปิดด้านล่าง
+    openBtn.addEventListener('click', openSelectedLink);
+
+    // รองรับคีย์บอร์ด (ลูกศร ขึ้น/ลง และ Enter)
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        const next = Math.min(activeIndex + 1, items.length - 1);
+        pickerList.scrollTo({ top: next * itemHeight, behavior: 'smooth' });
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        const prev = Math.max(activeIndex - 1, 0);
+        pickerList.scrollTo({ top: prev * itemHeight, behavior: 'smooth' });
+      } else if (e.key === 'Enter') {
+        openSelectedLink();
+      }
+    });
+
+    // ตั้งค่าเริ่มต้น
+    updateActiveItem();
+  </script>
 </body>
 </html>
+
